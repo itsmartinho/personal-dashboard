@@ -37,6 +37,8 @@ const DEFAULT_STATE = {
     unit: 'C',
     use24Hour: true,
     accent: 'indigo',
+    haUrl: '',
+    haToken: '',
   },
   dailyFocus: {
     text: '',
@@ -108,6 +110,24 @@ let newTaskHighPriority = false;
 let toastTimeout = null;
 let lastWeatherCoords = '';
 let lastWeatherData = null;
+let lastHaConfigKey = '';
+let lastHaData = null;
+
+const HA_SUMMARY_TEMPLATE = `{
+  "temp": {{ states('sensor.temp_home_average') | float(none) | tojson }},
+  "humidity": {{ states('sensor.humd_home_average') | float(none) | tojson }},
+  "lights_on": {{ expand('light.lights_all') | selectattr('state', 'eq', 'on') | map(attribute='name') | list | tojson }},
+  "lights_total": {{ expand('light.lights_all') | list | count }},
+  "windows_open": {{ expand('binary_sensor.window_all') | selectattr('state', 'eq', 'on') | map(attribute='name') | list | tojson }},
+  "windows_total": {{ expand('binary_sensor.window_all') | list | count }},
+  "cameras": [
+    {"name": "Sala", "state": {{ ('on' if is_state('switch.camera_lr_sleep', 'off') else ('off' if is_state('switch.camera_lr_sleep', 'on') else 'offline')) | tojson }}},
+    {"name": "Suíte", "state": {{ ('on' if is_state('switch.camera_gr_sleep', 'off') else ('off' if is_state('switch.camera_gr_sleep', 'on') else 'offline')) | tojson }}},
+    {"name": "Cozinha", "state": {{ ('on' if is_state('switch.camera_kt_sleep', 'off') else ('off' if is_state('switch.camera_kt_sleep', 'on') else 'offline')) | tojson }}},
+    {"name": "Escritório", "state": {{ ('on' if is_state('switch.camera_of_sleep', 'off') else ('off' if is_state('switch.camera_of_sleep', 'on') else 'offline')) | tojson }}},
+    {"name": "Hall", "state": {{ ('on' if is_state('switch.hall_camera_status', 'on') else ('off' if is_state('switch.hall_camera_status', 'off') else 'offline')) | tojson }}}
+  ]
+}`;
 
 // Timer runtime state
 let timerMode = 'focus';
@@ -211,6 +231,14 @@ function renderAll({ updateNotesInput = true } = {}) {
     fetchWeather();
   } else {
     renderWeather();
+  }
+
+  const haKey = `${(state.settings.haUrl || '').trim()}|${(state.settings.haToken || '').trim()}`;
+  if (haKey !== lastHaConfigKey) {
+    lastHaConfigKey = haKey;
+    fetchHomeAssistant();
+  } else {
+    renderHomeAssistant();
   }
 }
 
@@ -377,6 +405,146 @@ async function geocodeCity(cityName) {
     return true;
   } catch {
     return false;
+  }
+}
+
+/* ==================== HOME ASSISTANT (MART HOUSE) ==================== */
+function cleanEntityLabel(label) {
+  return String(label || '')
+    .replace(/^(LIGHT|WINDOW|JANELA|LUZ)\s*:\s*/i, '')
+    .replace(/\s+contact$/i, '')
+    .trim();
+}
+
+function formatTempPrecise(celsius) {
+  if (typeof celsius !== 'number' || Number.isNaN(celsius)) return '--°';
+  if (state.settings.unit === 'F') {
+    return `${((celsius * 9) / 5 + 32).toFixed(1)}°`;
+  }
+  return `${celsius.toFixed(1)}°`;
+}
+
+function setHaBadge(mode, text) {
+  const badge = document.getElementById('haStatusBadge');
+  badge.classList.remove('connected', 'error');
+  if (mode === 'connected') badge.classList.add('connected');
+  if (mode === 'error') badge.classList.add('error');
+  badge.textContent = text;
+}
+
+function renderHomeAssistant() {
+  const haUrl = (state.settings.haUrl || '').trim();
+  const haToken = (state.settings.haToken || '').trim();
+  const setupPrompt = document.getElementById('haSetupPrompt');
+  const metricsGrid = document.getElementById('haMetricsGrid');
+  const refreshBtn = document.getElementById('haRefreshBtn');
+
+  if (!haUrl || !haToken) {
+    setupPrompt.classList.remove('hidden');
+    metricsGrid.classList.add('hidden');
+    refreshBtn.classList.add('hidden');
+    setHaBadge('idle', 'Not connected');
+    return;
+  }
+
+  setupPrompt.classList.add('hidden');
+  metricsGrid.classList.remove('hidden');
+  refreshBtn.classList.remove('hidden');
+
+  if (!lastHaData) return;
+
+  // Temperature & Humidity
+  document.getElementById('haTempValue').textContent = formatTempPrecise(lastHaData.temp);
+  const hum = typeof lastHaData.humidity === 'number' ? `${Math.round(lastHaData.humidity)}%` : '--%';
+  document.getElementById('haHumiditySub').textContent = `Humidity ${hum}`;
+
+  // Lights
+  const lightsOn = Array.isArray(lastHaData.lights_on) ? lastHaData.lights_on.map(cleanEntityLabel) : [];
+  const lightsTotal = lastHaData.lights_total ?? 0;
+  const lightsCard = document.getElementById('haMetricLights');
+  lightsCard.classList.toggle('state-active', lightsOn.length > 0);
+  document.getElementById('haLightsValue').textContent = lightsOn.length ? `${lightsOn.length} on` : 'All off';
+  const lightsSub = document.getElementById('haLightsSub');
+  lightsSub.textContent = lightsOn.length
+    ? lightsOn.join(', ')
+    : `0 of ${lightsTotal} on`;
+  lightsSub.title = lightsSub.textContent;
+
+  // Windows
+  const windowsOpen = Array.isArray(lastHaData.windows_open) ? lastHaData.windows_open.map(cleanEntityLabel) : [];
+  const windowsTotal = lastHaData.windows_total ?? 0;
+  const windowsCard = document.getElementById('haMetricWindows');
+  windowsCard.classList.toggle('state-alert', windowsOpen.length > 0);
+  document.getElementById('haWindowsValue').textContent = windowsOpen.length ? `${windowsOpen.length} open` : 'All closed';
+  const windowsSub = document.getElementById('haWindowsSub');
+  windowsSub.textContent = windowsOpen.length
+    ? windowsOpen.join(', ')
+    : `0 of ${windowsTotal} open`;
+  windowsSub.title = windowsSub.textContent;
+
+  // Cameras (Sala, Suíte, Cozinha, Escritório, Hall — excluding Attic)
+  const cams = Array.isArray(lastHaData.cameras) ? lastHaData.cameras : [];
+  const activeCams = cams.filter((c) => c.state === 'on').map((c) => c.name);
+  const offCams = cams.filter((c) => c.state === 'off').map((c) => c.name);
+  const offlineCams = cams.filter((c) => c.state === 'offline').map((c) => c.name);
+  const camsCard = document.getElementById('haMetricCameras');
+  camsCard.classList.toggle('state-live', activeCams.length > 0);
+  document.getElementById('haCamerasValue').textContent = activeCams.length
+    ? `${activeCams.length} on`
+    : 'All off';
+
+  const parts = [];
+  if (activeCams.length) parts.push(`On: ${activeCams.join(', ')}`);
+  if (offCams.length) parts.push(`Off: ${offCams.join(', ')}`);
+  if (offlineCams.length) parts.push(`Offline: ${offlineCams.join(', ')}`);
+  const camsSub = document.getElementById('haCamerasSub');
+  camsSub.textContent = parts.join(' · ') || 'No cameras found';
+  camsSub.title = camsSub.textContent;
+}
+
+async function fetchHomeAssistant({ manual = false } = {}) {
+  const haUrl = (state.settings.haUrl || '').trim().replace(/\/+$/, '');
+  const haToken = (state.settings.haToken || '').trim();
+
+  if (!haUrl || !haToken) {
+    lastHaData = null;
+    renderHomeAssistant();
+    return;
+  }
+
+  renderHomeAssistant();
+  if (manual) setHaBadge('idle', 'Refreshing...');
+
+  try {
+    const res = await fetch(`${haUrl}/api/template`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${haToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ template: HA_SUMMARY_TEMPLATE }),
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      setHaBadge('error', 'Invalid token');
+      if (manual) showToast('Home Assistant rejected the access token');
+      return;
+    }
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const text = await res.text();
+    lastHaData = JSON.parse(text);
+    renderHomeAssistant();
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setHaBadge('connected', `Live · ${timeStr}`);
+    if (manual) showToast('Mart House updated');
+  } catch (err) {
+    console.error('Home Assistant fetch error:', err);
+    setHaBadge('error', 'Connection error');
+    if (manual) showToast('Could not reach Home Assistant (check URL / CORS)');
   }
 }
 
@@ -646,6 +814,8 @@ async function handleSignOut() {
     await signOut(auth);
     state = structuredClone(DEFAULT_STATE);
     lastWeatherCoords = '';
+    lastHaConfigKey = '';
+    lastHaData = null;
     document.getElementById('notesArea').value = '';
     document.getElementById('dailyFocusInput').value = '';
     document.getElementById('settingsModal').close();
@@ -661,6 +831,8 @@ function openSettingsModal() {
   document.getElementById('accountEmailLabel').textContent = currentUser?.email || '—';
   document.getElementById('settingNameInput').value = state.settings.name || '';
   document.getElementById('settingCityInput').value = state.settings.city || '';
+  document.getElementById('settingHaUrlInput').value = state.settings.haUrl || '';
+  document.getElementById('settingHaTokenInput').value = state.settings.haToken || '';
   document.querySelectorAll('.accent-swatch').forEach((swatch) => {
     swatch.classList.toggle('active', swatch.dataset.accent === state.settings.accent);
   });
@@ -676,6 +848,9 @@ function init() {
   setInterval(() => {
     if (currentUser) fetchWeather();
   }, 15 * 60 * 1000);
+  setInterval(() => {
+    if (currentUser && !document.hidden) fetchHomeAssistant();
+  }, 30 * 1000);
 
   // Auth state observer
   const loadingScreen = document.getElementById('authLoadingScreen');
@@ -803,8 +978,21 @@ function init() {
   document.getElementById('toggleUnitBtn').addEventListener('click', () => {
     state.settings.unit = state.settings.unit === 'C' ? 'F' : 'C';
     renderWeather();
+    renderHomeAssistant();
     saveState({ immediate: true });
   });
+
+  // Home Assistant controls
+  document.getElementById('haRefreshBtn').addEventListener('click', () => {
+    fetchHomeAssistant({ manual: true });
+  });
+
+  const openHaSettings = () => {
+    openSettingsModal();
+    document.getElementById('settingHaUrlInput').focus();
+  };
+  document.getElementById('haConfigureBtn').addEventListener('click', openHaSettings);
+  document.getElementById('haConnectCtaBtn').addEventListener('click', openHaSettings);
 
   document.getElementById('locateWeatherBtn').addEventListener('click', () => {
     if (!navigator.geolocation) {
@@ -914,12 +1102,22 @@ function init() {
     e.preventDefault();
     const newName = document.getElementById('settingNameInput').value.trim();
     const newCity = document.getElementById('settingCityInput').value.trim();
+    const newHaUrl = document.getElementById('settingHaUrlInput').value.trim().replace(/\/+$/, '');
+    const newHaToken = document.getElementById('settingHaTokenInput').value.trim();
 
     state.settings.name = newName;
     state.settings.accent = selectedAccent;
+    state.settings.haUrl = newHaUrl;
+    state.settings.haToken = newHaToken;
     applyAccent(selectedAccent);
     updateClock();
     saveState({ immediate: true });
+
+    const newHaKey = `${newHaUrl}|${newHaToken}`;
+    if (newHaKey !== lastHaConfigKey) {
+      lastHaConfigKey = newHaKey;
+      fetchHomeAssistant({ manual: Boolean(newHaUrl && newHaToken) });
+    }
 
     if (newCity && newCity.toLowerCase() !== (state.settings.city || '').toLowerCase()) {
       const ok = await geocodeCity(newCity);
@@ -932,7 +1130,9 @@ function init() {
 
   // Export / Import / Reset
   document.getElementById('exportDataBtn').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const safeExport = structuredClone(state);
+    if (safeExport.settings) safeExport.settings.haToken = '';
+    const blob = new Blob([JSON.stringify(safeExport, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

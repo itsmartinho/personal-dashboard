@@ -514,6 +514,7 @@ button {
 .card-clock   { grid-column: span 5; }
 .card-weather { grid-column: span 4; }
 .card-timer   { grid-column: span 3; }
+.card-home    { grid-column: span 12; }
 .card-tasks   { grid-column: span 5; min-height: 360px; }
 .card-links   { grid-column: span 3; min-height: 360px; }
 .card-notes   { grid-column: span 4; min-height: 360px; }
@@ -1374,14 +1375,154 @@ button {
   background: rgba(255, 255, 255, 0.22);
 }
 
+/* Home Assistant (Mart House) Card */
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.home-status-badge.connected {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.14);
+}
+
+.home-status-badge.error {
+  color: var(--danger);
+  background: rgba(251, 113, 133, 0.14);
+}
+
+.ha-setup-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 6px 2px 2px;
+  color: var(--text-secondary);
+  font-size: 0.87rem;
+}
+
+.ha-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ha-metric {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.ha-metric:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-hover);
+}
+
+.ha-metric.state-active {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.ha-metric.state-alert {
+  border-color: rgba(251, 113, 133, 0.4);
+  background: rgba(251, 113, 133, 0.07);
+}
+
+.ha-metric.state-live {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.06);
+}
+
+.ha-metric-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ha-metric-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ha-metric-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.ha-metric-value {
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 2px;
+  color: var(--text);
+}
+
+.ha-metric-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.form-section-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.form-field input[type="password"] {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.form-field input[type="password"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.modal-card {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .card-clock   { grid-column: span 6; }
   .card-weather { grid-column: span 6; }
   .card-timer   { grid-column: span 5; }
+  .card-home    { grid-column: span 12; }
   .card-links   { grid-column: span 7; min-height: auto; }
   .card-tasks   { grid-column: span 6; }
   .card-notes   { grid-column: span 6; }
+  .ha-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -1396,11 +1537,16 @@ button {
   .card-clock,
   .card-weather,
   .card-timer,
+  .card-home,
   .card-tasks,
   .card-links,
   .card-notes {
     grid-column: span 1;
     min-height: auto;
+  }
+
+  .ha-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .topbar-actions {

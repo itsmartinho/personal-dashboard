@@ -223,6 +223,68 @@
         </div>
       </section>
 
+      <!-- Mart House (Home Assistant) Card -->
+      <section class="card card-home" aria-label="Mart House smart home status">
+        <div class="card-header">
+          <div class="header-with-badge">
+            <span class="card-eyebrow">Mart House</span>
+            <span class="home-status-badge" id="haStatusBadge">Not connected</span>
+          </div>
+          <div class="home-header-actions">
+            <button class="icon-btn icon-btn-sm hidden" id="haRefreshBtn" type="button" title="Refresh Home Assistant data" aria-label="Refresh Home Assistant">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+            </button>
+            <button class="pill-btn" id="haConfigureBtn" type="button">Configure</button>
+          </div>
+        </div>
+
+        <div class="ha-setup-prompt" id="haSetupPrompt">
+          <p>Connect your Home Assistant instance privately to monitor indoor temperature, lights, windows, and cameras live.</p>
+          <button class="pill-btn pill-accent" id="haConnectCtaBtn" type="button">Connect Home Assistant</button>
+        </div>
+
+        <div class="ha-metrics-grid hidden" id="haMetricsGrid">
+          <div class="ha-metric" id="haMetricTemp">
+            <div class="ha-metric-top">
+              <span class="ha-metric-icon" aria-hidden="true">🌡️</span>
+              <span class="ha-metric-label">Indoor Temp</span>
+            </div>
+            <div class="ha-metric-value" id="haTempValue">--°</div>
+            <div class="ha-metric-sub" id="haHumiditySub">Humidity --%</div>
+          </div>
+
+          <div class="ha-metric" id="haMetricLights">
+            <div class="ha-metric-top">
+              <span class="ha-metric-icon" aria-hidden="true">💡</span>
+              <span class="ha-metric-label">Lights</span>
+            </div>
+            <div class="ha-metric-value" id="haLightsValue">--</div>
+            <div class="ha-metric-sub" id="haLightsSub">Checking...</div>
+          </div>
+
+          <div class="ha-metric" id="haMetricWindows">
+            <div class="ha-metric-top">
+              <span class="ha-metric-icon" aria-hidden="true">🪟</span>
+              <span class="ha-metric-label">Windows</span>
+            </div>
+            <div class="ha-metric-value" id="haWindowsValue">--</div>
+            <div class="ha-metric-sub" id="haWindowsSub">Checking...</div>
+          </div>
+
+          <div class="ha-metric" id="haMetricCameras">
+            <div class="ha-metric-top">
+              <span class="ha-metric-icon" aria-hidden="true">📹</span>
+              <span class="ha-metric-label">Cameras</span>
+            </div>
+            <div class="ha-metric-value" id="haCamerasValue">--</div>
+            <div class="ha-metric-sub" id="haCamerasSub">Checking...</div>
+          </div>
+        </div>
+      </section>
+
       <!-- To-Do List Card -->
       <section class="card card-tasks" aria-label="To-do list">
         <div class="card-header">
@@ -375,6 +437,21 @@
           <button type="button" class="accent-swatch" data-accent="rose" style="--swatch: #fb7185" aria-label="Rose"></button>
           <button type="button" class="accent-swatch" data-accent="amber" style="--swatch: #fbbf24" aria-label="Amber"></button>
         </div>
+      </div>
+
+      <div class="form-divider"></div>
+
+      <div class="form-section-title">Home Assistant (Mart House)</div>
+
+      <div class="form-field">
+        <label for="settingHaUrlInput">Home Assistant URL</label>
+        <input type="text" id="settingHaUrlInput" placeholder="https://your-instance.ui.nabu.casa" autocomplete="off" />
+      </div>
+
+      <div class="form-field">
+        <label for="settingHaTokenInput">Long-Lived Access Token</label>
+        <input type="password" id="settingHaTokenInput" placeholder="Paste token from HA Profile → Security" autocomplete="off" />
+        <p class="field-hint">Stored privately in your Firebase account — never committed to GitHub.</p>
       </div>
 
       <div class="form-divider"></div>
