@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Personal Dashboard</title>
+  <meta name="description" content="A sleek personal productivity dashboard with clock, live weather, tasks, quick links, focus timer, and notes." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f111a'/%3E%3Crect x='12' y='12' width='17' height='17' rx='4' fill='%23818cf8'/%3E%3Crect x='35' y='12' width='17' height='17' rx='4' fill='%2338bdf8' fill-opacity='0.85'/%3E%3Crect x='12' y='35' width='17' height='17' rx='4' fill='%23ffffff' fill-opacity='0.2'/%3E%3Crect x='35' y='35' width='17' height='17' rx='4' fill='%23ffffff' fill-opacity='0.2'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="ambient-bg" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="greeting-block">
+        <p class="date-label" id="dateLabel">Loading date...</p>
+        <h1 class="greeting-title">
+          <span id="greetingText">Good evening</span><span id="greetingName"></span>
+        </h1>
+      </div>
+
+      <div class="topbar-actions">
+        <form class="search-form" id="searchForm" role="search" autocomplete="off">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search the web..."
+            aria-label="Search the web"
+          />
+          <kbd class="kbd-hint">/</kbd>
+        </form>
+
+        <button class="icon-btn" id="openSettingsBtn" type="button" title="Dashboard Settings" aria-label="Open settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Bento Grid -->
+    <main class="bento-grid">
+      <!-- Clock & Daily Focus Card -->
+      <section class="card card-clock" aria-label="Clock and daily focus">
+        <div class="card-header">
+          <span class="card-eyebrow">Local Time</span>
+          <button class="pill-btn" id="toggleClockFormatBtn" type="button" title="Toggle 12-hour or 24-hour clock">24H</button>
+        </div>
+
+        <div class="clock-display">
+          <div class="clock-time" id="clockTime">00:00</div>
+          <div class="clock-meta">
+            <span class="clock-seconds" id="clockSeconds">:00</span>
+            <span class="clock-ampm" id="clockAmPm"></span>
+          </div>
+        </div>
+
+        <div class="daily-focus">
+          <label for="dailyFocusInput" class="focus-label">Main focus for today</label>
+          <div class="focus-input-wrap">
+            <button type="button" class="focus-check" id="dailyFocusCheck" aria-label="Mark daily focus complete" title="Complete daily focus">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <input
+              type="text"
+              id="dailyFocusInput"
+              placeholder="What's your #1 priority today?"
+              maxlength="120"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Weather Card -->
+      <section class="card card-weather" aria-label="Weather">
+        <div class="card-header">
+          <span class="card-eyebrow">Weather</span>
+          <div class="weather-header-actions">
+            <button class="pill-btn" id="toggleUnitBtn" type="button" title="Switch between Celsius and Fahrenheit">°C</button>
+            <button class="icon-btn icon-btn-sm" id="locateWeatherBtn" type="button" title="Use my current location" aria-label="Use current location">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="weather-body" id="weatherBody">
+          <div class="weather-main">
+            <div class="weather-icon-wrap" id="weatherIcon" aria-hidden="true">☀️</div>
+            <div>
+              <div class="weather-temp" id="weatherTemp">--°</div>
+              <div class="weather-desc" id="weatherDesc">Loading weather...</div>
+            </div>
+          </div>
+
+          <div class="weather-location-row">
+            <span class="weather-city" id="weatherCity">Lisbon</span>
+            <span class="weather-stats" id="weatherStats">H: --° · L: --°</span>
+          </div>
+
+          <div class="weather-details" id="weatherDetails">
+            <div class="weather-stat-chip">
+              <span class="stat-label">Feels like</span>
+              <span class="stat-value" id="weatherFeels">--°</span>
+            </div>
+            <div class="weather-stat-chip">
+              <span class="stat-label">Humidity</span>
+              <span class="stat-value" id="weatherHumidity">--%</span>
+            </div>
+            <div class="weather-stat-chip">
+              <span class="stat-label">Wind</span>
+              <span class="stat-value" id="weatherWind">-- km/h</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Focus Timer (Pomodoro) Card -->
+      <section class="card card-timer" aria-label="Focus timer">
+        <div class="card-header">
+          <span class="card-eyebrow">Focus Timer</span>
+          <div class="timer-modes" role="tablist" aria-label="Timer presets">
+            <button class="mode-btn active" data-mode="focus" type="button">Focus</button>
+            <button class="mode-btn" data-mode="short" type="button">Short</button>
+            <button class="mode-btn" data-mode="long" type="button">Long</button>
+          </div>
+        </div>
+
+        <div class="timer-ring-wrap">
+          <svg class="timer-ring" viewBox="0 0 140 140" aria-hidden="true">
+            <circle class="timer-ring-track" cx="70" cy="70" r="60" />
+            <circle class="timer-ring-progress" id="timerProgress" cx="70" cy="70" r="60" />
+          </svg>
+          <div class="timer-center">
+            <div class="timer-value" id="timerDisplay">25:00</div>
+            <div class="timer-status" id="timerStatus">Ready</div>
+          </div>
+        </div>
+
+        <div class="timer-controls">
+          <button class="primary-btn" id="timerToggleBtn" type="button">Start</button>
+          <button class="ghost-btn" id="timerResetBtn" type="button">Reset</button>
+        </div>
+      </section>
+
+      <!-- To-Do List Card -->
+      <section class="card card-tasks" aria-label="To-do list">
+        <div class="card-header">
+          <div class="header-with-badge">
+            <span class="card-eyebrow">Tasks</span>
+            <span class="count-badge" id="taskCountBadge">0 left</span>
+          </div>
+          <div class="task-filters" role="tablist" aria-label="Filter tasks">
+            <button class="filter-btn active" data-filter="all" type="button">All</button>
+            <button class="filter-btn" data-filter="active" type="button">Active</button>
+            <button class="filter-btn" data-filter="done" type="button">Done</button>
+          </div>
+        </div>
+
+        <div class="task-progress-bar" aria-hidden="true">
+          <div class="task-progress-fill" id="taskProgressFill"></div>
+        </div>
+
+        <form class="task-form" id="taskForm" autocomplete="off">
+          <input
+            type="text"
+            id="taskInput"
+            placeholder="Add a new task..."
+            maxlength="160"
+            aria-label="New task"
+          />
+          <button
+            type="button"
+            class="priority-toggle"
+            id="priorityToggleBtn"
+            title="Toggle high priority"
+            aria-label="Toggle high priority"
+            aria-pressed="false"
+          >
+            <span class="priority-dot"></span>
+          </button>
+          <button class="primary-btn btn-sm" type="submit">Add</button>
+        </form>
+
+        <ul class="task-list" id="taskList" aria-live="polite"></ul>
+
+        <div class="card-footer-row" id="taskFooter">
+          <span class="muted-note" id="taskSummaryText">0 of 0 completed</span>
+          <button class="text-btn" id="clearCompletedBtn" type="button">Clear completed</button>
+        </div>
+      </section>
+
+      <!-- Quick Links Card -->
+      <section class="card card-links" aria-label="Quick links">
+        <div class="card-header">
+          <span class="card-eyebrow">Quick Links</span>
+          <button class="pill-btn pill-accent" id="openAddLinkBtn" type="button">+ Add Link</button>
+        </div>
+
+        <div class="links-grid" id="linksGrid"></div>
+      </section>
+
+      <!-- Quick Notes Card -->
+      <section class="card card-notes" aria-label="Quick notes">
+        <div class="card-header">
+          <span class="card-eyebrow">Scratchpad</span>
+          <div class="notes-actions">
+            <span class="saved-indicator" id="notesSavedIndicator">Saved</span>
+            <button class="text-btn" id="copyNotesBtn" type="button">Copy</button>
+            <button class="text-btn text-danger" id="clearNotesBtn" type="button">Clear</button>
+          </div>
+        </div>
+
+        <textarea
+          id="notesArea"
+          class="notes-textarea"
+          placeholder="Jot down quick ideas, meeting notes, snippets, or reminders... Everything saves automatically in your browser."
+          aria-label="Quick notes scratchpad"
+        ></textarea>
+
+        <div class="card-footer-row">
+          <span class="muted-note" id="notesStats">0 words · 0 chars</span>
+          <span class="muted-note">Stored locally</span>
+        </div>
+      </section>
+    </main>
+
+    <!-- Subtle Quote Footer -->
+    <footer class="footer">
+      <p class="quote-text" id="quoteText"></p>
+      <button class="text-btn" id="nextQuoteBtn" type="button" title="Show another quote">New quote ↻</button>
+    </footer>
+  </div>
+
+  <!-- Add Link Modal -->
+  <dialog class="modal" id="addLinkModal" aria-labelledby="addLinkTitle">
+    <form class="modal-card" id="addLinkForm" method="dialog">
+      <div class="modal-header">
+        <h2 id="addLinkTitle">Add Quick Link</h2>
+        <button type="button" class="icon-btn icon-btn-sm" data-close-modal aria-label="Close">✕</button>
+      </div>
+
+      <div class="form-field">
+        <label for="linkTitleInput">Name</label>
+        <input type="text" id="linkTitleInput" placeholder="e.g. GitHub, Notion, Spotify" maxlength="32" required />
+      </div>
+
+      <div class="form-field">
+        <label for="linkUrlInput">Website URL</label>
+        <input type="text" id="linkUrlInput" placeholder="e.g. github.com or https://..." required />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" data-close-modal>Cancel</button>
+        <button type="submit" class="primary-btn">Save Link</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings Modal -->
+  <dialog class="modal" id="settingsModal" aria-labelledby="settingsTitle">
+    <form class="modal-card" id="settingsForm" method="dialog">
+      <div class="modal-header">
+        <h2 id="settingsTitle">Dashboard Settings</h2>
+        <button type="button" class="icon-btn icon-btn-sm" data-close-modal aria-label="Close">✕</button>
+      </div>
+
+      <div class="form-field">
+        <label for="settingNameInput">Your Name</label>
+        <input type="text" id="settingNameInput" placeholder="Optional — shown in greeting" maxlength="32" />
+      </div>
+
+      <div class="form-field">
+        <label for="settingCityInput">Weather City</label>
+        <div class="inline-field">
+          <input type="text" id="settingCityInput" placeholder="e.g. Lisbon, London, New York, Tokyo" maxlength="64" />
+        </div>
+        <p class="field-hint">Powered by Open-Meteo — no API key needed.</p>
+      </div>
+
+      <div class="form-field">
+        <label>Accent Color</label>
+        <div class="accent-picker" id="accentPicker">
+          <button type="button" class="accent-swatch" data-accent="indigo" style="--swatch: #818cf8" aria-label="Indigo"></button>
+          <button type="button" class="accent-swatch" data-accent="cyan" style="--swatch: #38bdf8" aria-label="Cyan"></button>
+          <button type="button" class="accent-swatch" data-accent="emerald" style="--swatch: #34d399" aria-label="Emerald"></button>
+          <button type="button" class="accent-swatch" data-accent="rose" style="--swatch: #fb7185" aria-label="Rose"></button>
+          <button type="button" class="accent-swatch" data-accent="amber" style="--swatch: #fbbf24" aria-label="Amber"></button>
+        </div>
+      </div>
+
+      <div class="form-divider"></div>
+
+      <div class="backup-row">
+        <div>
+          <div class="backup-title">Backup &amp; Restore</div>
+          <div class="field-hint">All data stays private in your browser's local storage.</div>
+        </div>
+        <div class="backup-buttons">
+          <button type="button" class="ghost-btn btn-sm" id="exportDataBtn">Export</button>
+          <label class="ghost-btn btn-sm file-btn">
+            Import
+            <input type="file" id="importDataInput" accept="application/json" hidden />
+          </label>
+        </div>
+      </div>
+
+      <div class="modal-actions modal-actions-split">
+        <button type="button" class="text-btn text-danger" id="resetDashboardBtn">Reset defaults</button>
+        <div class="modal-actions-right">
+          <button type="button" class="ghost-btn" data-close-modal>Cancel</button>
+          <button type="submit" class="primary-btn">Save Changes</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
