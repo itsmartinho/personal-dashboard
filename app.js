@@ -1,8 +1,36 @@
-const STORAGE_KEY = 'personal_dashboard_v1';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  onSnapshot,
+  serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: 'AIzaSyAE8DdLa9lFI6CapNsMbxxLj5q-qGQFNDI',
+  authDomain: 'personal-dashboard-56625.firebaseapp.com',
+  projectId: 'personal-dashboard-56625',
+  storageBucket: 'personal-dashboard-56625.firebasestorage.app',
+  messagingSenderId: '908002978391',
+  appId: '1:908002978391:web:658b9ad83a84c30009d112',
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
+const LEGACY_STORAGE_KEY = 'personal_dashboard_v1';
 
 const DEFAULT_STATE = {
   settings: {
-    name: '',
+    name: 'Martinho',
     city: 'Lisbon',
     lat: 38.7223,
     lon: -9.1393,
@@ -15,9 +43,9 @@ const DEFAULT_STATE = {
     done: false,
   },
   tasks: [
-    { id: 't1', text: 'Personalize your name & city in Settings', done: false, high: true },
+    { id: 't1', text: 'Personalize your city & accent color in Settings', done: false, high: true },
     { id: 't2', text: 'Add your favorite quick links', done: false, high: false },
-    { id: 't3', text: 'Publish this dashboard to GitHub Pages', done: false, high: false },
+    { id: 't3', text: 'Connect dashboard.mrtnh.com on Spaceship', done: false, high: false },
   ],
   links: [
     { id: 'l1', title: 'GitHub', url: 'https://github.com' },
@@ -25,7 +53,7 @@ const DEFAULT_STATE = {
     { id: 'l3', title: 'Calendar', url: 'https://calendar.google.com' },
     { id: 'l4', title: 'YouTube', url: 'https://youtube.com' },
     { id: 'l5', title: 'Drive', url: 'https://drive.google.com' },
-    { id: 'l6', title: 'Notion', url: 'https://notion.so' },
+    { id: 'l6', title: 'Firebase', url: 'https://console.firebase.google.com' },
   ],
   notes: '',
 };
@@ -70,10 +98,16 @@ const WMO_WEATHER = {
   99: ['Severe thunderstorm', '⛈️'],
 };
 
-let state = loadState();
+let currentUser = null;
+let unsubscribeDoc = null;
+let saveDebounceTimer = null;
+let lastLocalSaveAt = 0;
+let state = structuredClone(DEFAULT_STATE);
 let taskFilter = 'all';
 let newTaskHighPriority = false;
 let toastTimeout = null;
+let lastWeatherCoords = '';
+let lastWeatherData = null;
 
 // Timer runtime state
 let timerMode = 'focus';
@@ -81,29 +115,26 @@ let timerRemaining = TIMER_PRESETS.focus.seconds;
 let timerInterval = null;
 const RING_CIRCUMFERENCE = 2 * Math.PI * 60;
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULT_STATE);
-    const parsed = JSON.parse(raw);
-    return {
-      settings: { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) },
-      dailyFocus: { ...DEFAULT_STATE.dailyFocus, ...(parsed.dailyFocus || {}) },
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : structuredClone(DEFAULT_STATE.tasks),
-      links: Array.isArray(parsed.links) ? parsed.links : structuredClone(DEFAULT_STATE.links),
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    };
-  } catch {
-    return structuredClone(DEFAULT_STATE);
-  }
+function mergeState(raw) {
+  if (!raw || typeof raw !== 'object') return structuredClone(DEFAULT_STATE);
+  return {
+    settings: { ...DEFAULT_STATE.settings, ...(raw.settings || {}) },
+    dailyFocus: { ...DEFAULT_STATE.dailyFocus, ...(raw.dailyFocus || {}) },
+    tasks: Array.isArray(raw.tasks) ? raw.tasks : structuredClone(DEFAULT_STATE.tasks),
+    links: Array.isArray(raw.links) ? raw.links : structuredClone(DEFAULT_STATE.links),
+    notes: typeof raw.notes === 'string' ? raw.notes : '',
+  };
 }
 
-function saveState() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    showToast('Could not save to local storage');
-  }
+function setSyncStatus(status, label) {
+  const pill = document.getElementById('syncPill');
+  const text = document.getElementById('syncLabel');
+  const notesInd = document.getElementById('notesSavedIndicator');
+  pill.classList.remove('syncing', 'error');
+  if (status === 'syncing') pill.classList.add('syncing');
+  if (status === 'error') pill.classList.add('error');
+  text.textContent = label;
+  if (notesInd) notesInd.textContent = label;
 }
 
 function showToast(message) {
@@ -122,6 +153,112 @@ function applyAccent(accent) {
   }
 }
 
+/* ==================== CLOUD SYNC ==================== */
+function saveState({ immediate = false } = {}) {
+  if (!currentUser) return;
+
+  setSyncStatus('syncing', 'Syncing...');
+  clearTimeout(saveDebounceTimer);
+
+  const persist = async () => {
+    if (!currentUser) return;
+    lastLocalSaveAt = Date.now();
+    try {
+      const ref = doc(db, 'dashboards', currentUser.uid);
+      await setDoc(
+        ref,
+        {
+          settings: state.settings,
+          dailyFocus: state.dailyFocus,
+          tasks: state.tasks,
+          links: state.links,
+          notes: state.notes,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setSyncStatus('synced', 'Synced');
+    } catch (err) {
+      console.error('Firestore save error:', err);
+      setSyncStatus('error', 'Sync error');
+      showToast('Could not sync to cloud');
+    }
+  };
+
+  if (immediate) {
+    persist();
+  } else {
+    saveDebounceTimer = setTimeout(persist, 400);
+  }
+}
+
+function renderAll({ updateNotesInput = true } = {}) {
+  applyAccent(state.settings.accent);
+  updateClock();
+  renderDailyFocus();
+  renderTasks();
+  renderLinks();
+
+  const notesArea = document.getElementById('notesArea');
+  if (updateNotesInput && document.activeElement !== notesArea) {
+    notesArea.value = state.notes;
+  }
+  updateNotesStats();
+
+  const coordsKey = `${state.settings.lat},${state.settings.lon}`;
+  if (coordsKey !== lastWeatherCoords) {
+    lastWeatherCoords = coordsKey;
+    fetchWeather();
+  } else {
+    renderWeather();
+  }
+}
+
+function attachUserSync(user) {
+  if (unsubscribeDoc) {
+    unsubscribeDoc();
+    unsubscribeDoc = null;
+  }
+
+  const ref = doc(db, 'dashboards', user.uid);
+  setSyncStatus('syncing', 'Loading...');
+
+  unsubscribeDoc = onSnapshot(
+    ref,
+    async (snap) => {
+      if (!snap.exists()) {
+        // First-time sign-in: migrate any local preview data if present, else use defaults
+        let initial = structuredClone(DEFAULT_STATE);
+        try {
+          const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+          if (legacyRaw) {
+            initial = mergeState(JSON.parse(legacyRaw));
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+          }
+        } catch {
+          // Ignore invalid legacy cache
+        }
+        state = initial;
+        renderAll();
+        saveState({ immediate: true });
+        return;
+      }
+
+      // Skip overwriting active typing if this snapshot echoes our own recent write
+      const isFreshLocalEcho = snap.metadata.hasPendingWrites || Date.now() - lastLocalSaveAt < 900;
+      const incoming = mergeState(snap.data());
+      state = incoming;
+      renderAll({ updateNotesInput: !isFreshLocalEcho });
+      setSyncStatus('synced', 'Synced');
+    },
+    (err) => {
+      console.error('Firestore listener error:', err);
+      setSyncStatus('error', 'Offline');
+      showToast('Sync connection interrupted');
+    }
+  );
+}
+
 /* ==================== CLOCK & GREETING ==================== */
 function updateClock() {
   const now = new Date();
@@ -129,8 +266,7 @@ function updateClock() {
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
 
-  const dateLabel = document.getElementById('dateLabel');
-  dateLabel.textContent = now.toLocaleDateString(undefined, {
+  document.getElementById('dateLabel').textContent = now.toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -143,7 +279,7 @@ function updateClock() {
   else if (hours24 < 18) greeting = 'Good afternoon';
 
   document.getElementById('greetingText').textContent = greeting;
-  const name = state.settings.name.trim();
+  const name = (state.settings.name || '').trim();
   document.getElementById('greetingName').textContent = name ? `, ${name}` : '';
 
   const clockTime = document.getElementById('clockTime');
@@ -168,7 +304,9 @@ function updateClock() {
 function renderDailyFocus() {
   const input = document.getElementById('dailyFocusInput');
   const check = document.getElementById('dailyFocusCheck');
-  input.value = state.dailyFocus.text;
+  if (document.activeElement !== input) {
+    input.value = state.dailyFocus.text;
+  }
   check.classList.toggle('checked', state.dailyFocus.done);
   input.classList.toggle('completed', state.dailyFocus.done && Boolean(state.dailyFocus.text.trim()));
 }
@@ -182,11 +320,8 @@ function formatTemp(celsius) {
   return `${Math.round(celsius)}°`;
 }
 
-let lastWeatherData = null;
-
 function renderWeather() {
-  const unitBtn = document.getElementById('toggleUnitBtn');
-  unitBtn.textContent = `°${state.settings.unit}`;
+  document.getElementById('toggleUnitBtn').textContent = `°${state.settings.unit}`;
   document.getElementById('weatherCity').textContent = state.settings.city || 'Unknown location';
 
   if (!lastWeatherData) return;
@@ -236,7 +371,8 @@ async function geocodeCity(cityName) {
     state.settings.city = match.country_code ? `${match.name}, ${match.country_code}` : match.name;
     state.settings.lat = match.latitude;
     state.settings.lon = match.longitude;
-    saveState();
+    lastWeatherCoords = `${state.settings.lat},${state.settings.lon}`;
+    saveState({ immediate: true });
     await fetchWeather();
     return true;
   } catch {
@@ -248,8 +384,7 @@ async function geocodeCity(cityName) {
 function playChime() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const notes = [523.25, 659.25, 783.99];
-    notes.forEach((freq, index) => {
+    [523.25, 659.25, 783.99].forEach((freq, index) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
@@ -264,7 +399,7 @@ function playChime() {
       osc.stop(start + 0.5);
     });
   } catch {
-    // Ignore audio errors when browser blocks autoplay
+    // Ignore audio errors
   }
 }
 
@@ -365,8 +500,8 @@ function renderTasks() {
     checkbox.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
     checkbox.addEventListener('click', () => {
       task.done = !task.done;
-      saveState();
       renderTasks();
+      saveState({ immediate: true });
     });
 
     const span = document.createElement('span');
@@ -390,8 +525,8 @@ function renderTasks() {
     del.textContent = '✕';
     del.addEventListener('click', () => {
       state.tasks = state.tasks.filter((t) => t.id !== task.id);
-      saveState();
       renderTasks();
+      saveState({ immediate: true });
     });
 
     li.appendChild(del);
@@ -460,8 +595,8 @@ function renderLinks() {
       e.preventDefault();
       e.stopPropagation();
       state.links = state.links.filter((l) => l.id !== link.id);
-      saveState();
       renderLinks();
+      saveState({ immediate: true });
       showToast(`Removed ${link.title}`);
     });
 
@@ -474,7 +609,7 @@ function renderLinks() {
 
 /* ==================== NOTES ==================== */
 function updateNotesStats() {
-  const text = state.notes;
+  const text = state.notes || '';
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('notesStats').textContent = `${words} ${words === 1 ? 'word' : 'words'} · ${text.length} chars`;
 }
@@ -485,47 +620,119 @@ function renderQuote() {
   document.getElementById('quoteText').textContent = `“${QUOTES[quoteIndex]}”`;
 }
 
-/* ==================== SETTINGS & MODALS ==================== */
+/* ==================== AUTH UI ==================== */
+function formatAuthError(code) {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Incorrect email or password.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a minute and try again.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your internet connection.';
+    default:
+      return 'Could not sign in. Please try again.';
+  }
+}
+
+async function handleSignOut() {
+  try {
+    if (unsubscribeDoc) {
+      unsubscribeDoc();
+      unsubscribeDoc = null;
+    }
+    stopTimer();
+    await signOut(auth);
+    state = structuredClone(DEFAULT_STATE);
+    lastWeatherCoords = '';
+    document.getElementById('notesArea').value = '';
+    document.getElementById('dailyFocusInput').value = '';
+    document.getElementById('settingsModal').close();
+    showToast('Signed out');
+  } catch {
+    showToast('Could not sign out');
+  }
+}
+
+/* ==================== SETTINGS MODAL ==================== */
 function openSettingsModal() {
   const modal = document.getElementById('settingsModal');
-  document.getElementById('settingNameInput').value = state.settings.name;
-  document.getElementById('settingCityInput').value = state.settings.city;
+  document.getElementById('accountEmailLabel').textContent = currentUser?.email || '—';
+  document.getElementById('settingNameInput').value = state.settings.name || '';
+  document.getElementById('settingCityInput').value = state.settings.city || '';
   document.querySelectorAll('.accent-swatch').forEach((swatch) => {
     swatch.classList.toggle('active', swatch.dataset.accent === state.settings.accent);
   });
   modal.showModal();
 }
 
-/* ==================== EVENT WIRING ==================== */
+/* ==================== INIT ==================== */
 function init() {
-  applyAccent(state.settings.accent);
   updateClock();
   setInterval(updateClock, 1000);
-
-  renderDailyFocus();
-  renderTasks();
-  renderLinks();
   renderTimer();
   renderQuote();
-  fetchWeather();
-  setInterval(fetchWeather, 15 * 60 * 1000);
+  setInterval(() => {
+    if (currentUser) fetchWeather();
+  }, 15 * 60 * 1000);
 
-  // Notes init
+  // Auth state observer
+  const loadingScreen = document.getElementById('authLoadingScreen');
+  const authGate = document.getElementById('authGate');
+  const appShell = document.getElementById('appShell');
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    loadingScreen.classList.add('hidden');
+
+    if (user) {
+      authGate.classList.add('hidden');
+      appShell.classList.remove('hidden');
+      attachUserSync(user);
+    } else {
+      if (unsubscribeDoc) {
+        unsubscribeDoc();
+        unsubscribeDoc = null;
+      }
+      appShell.classList.add('hidden');
+      authGate.classList.remove('hidden');
+      document.getElementById('loginPassword').value = '';
+    }
+  });
+
+  // Login form
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errorEl = document.getElementById('loginError');
+    const submitBtn = document.getElementById('loginSubmitBtn');
+
+    errorEl.classList.add('hidden');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing in...';
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      errorEl.textContent = formatAuthError(err.code);
+      errorEl.classList.remove('hidden');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In';
+    }
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', handleSignOut);
+  document.getElementById('modalSignOutBtn').addEventListener('click', handleSignOut);
+
+  // Notes
   const notesArea = document.getElementById('notesArea');
-  notesArea.value = state.notes;
-  updateNotesStats();
-
-  let notesSaveTimeout = null;
   notesArea.addEventListener('input', () => {
     state.notes = notesArea.value;
     updateNotesStats();
-    const indicator = document.getElementById('notesSavedIndicator');
-    indicator.textContent = 'Saving...';
-    clearTimeout(notesSaveTimeout);
-    notesSaveTimeout = setTimeout(() => {
-      saveState();
-      indicator.textContent = 'Saved';
-    }, 350);
+    saveState();
   });
 
   document.getElementById('copyNotesBtn').addEventListener('click', async () => {
@@ -544,7 +751,7 @@ function init() {
     state.notes = '';
     notesArea.value = '';
     updateNotesStats();
-    saveState();
+    saveState({ immediate: true });
     showToast('Scratchpad cleared');
   });
 
@@ -559,6 +766,7 @@ function init() {
   });
 
   document.addEventListener('keydown', (e) => {
+    if (!currentUser) return;
     const tag = document.activeElement?.tagName;
     if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
       e.preventDefault();
@@ -569,16 +777,16 @@ function init() {
   // Clock toggle
   document.getElementById('toggleClockFormatBtn').addEventListener('click', () => {
     state.settings.use24Hour = !state.settings.use24Hour;
-    saveState();
     updateClock();
+    saveState({ immediate: true });
   });
 
   // Daily focus
   document.getElementById('dailyFocusInput').addEventListener('input', (e) => {
     state.dailyFocus.text = e.target.value;
     if (!state.dailyFocus.text.trim()) state.dailyFocus.done = false;
-    saveState();
     renderDailyFocus();
+    saveState();
   });
 
   document.getElementById('dailyFocusCheck').addEventListener('click', () => {
@@ -587,15 +795,15 @@ function init() {
       return;
     }
     state.dailyFocus.done = !state.dailyFocus.done;
-    saveState();
     renderDailyFocus();
+    saveState({ immediate: true });
   });
 
   // Weather controls
   document.getElementById('toggleUnitBtn').addEventListener('click', () => {
     state.settings.unit = state.settings.unit === 'C' ? 'F' : 'C';
-    saveState();
     renderWeather();
+    saveState({ immediate: true });
   });
 
   document.getElementById('locateWeatherBtn').addEventListener('click', () => {
@@ -608,7 +816,8 @@ function init() {
         state.settings.lat = pos.coords.latitude;
         state.settings.lon = pos.coords.longitude;
         state.settings.city = 'Current Location';
-        saveState();
+        lastWeatherCoords = `${state.settings.lat},${state.settings.lon}`;
+        saveState({ immediate: true });
         fetchWeather();
         showToast('Weather updated for your location');
       },
@@ -646,8 +855,8 @@ function init() {
     newTaskHighPriority = false;
     priorityBtn.classList.remove('high');
     priorityBtn.setAttribute('aria-pressed', 'false');
-    saveState();
     renderTasks();
+    saveState({ immediate: true });
   });
 
   document.querySelectorAll('.filter-btn').forEach((btn) => {
@@ -660,8 +869,8 @@ function init() {
 
   document.getElementById('clearCompletedBtn').addEventListener('click', () => {
     state.tasks = state.tasks.filter((t) => !t.done);
-    saveState();
     renderTasks();
+    saveState({ immediate: true });
   });
 
   // Add Link Modal
@@ -678,8 +887,8 @@ function init() {
     const url = normalizeUrl(document.getElementById('linkUrlInput').value);
     if (!title || !url) return;
     state.links.push({ id: `l_${Date.now()}`, title, url });
-    saveState();
     renderLinks();
+    saveState({ immediate: true });
     addLinkModal.close();
     showToast(`Added ${title}`);
   });
@@ -709,10 +918,10 @@ function init() {
     state.settings.name = newName;
     state.settings.accent = selectedAccent;
     applyAccent(selectedAccent);
-    saveState();
     updateClock();
+    saveState({ immediate: true });
 
-    if (newCity && newCity.toLowerCase() !== state.settings.city.toLowerCase()) {
+    if (newCity && newCity.toLowerCase() !== (state.settings.city || '').toLowerCase()) {
       const ok = await geocodeCity(newCity);
       showToast(ok ? `Settings saved · Weather set to ${state.settings.city}` : 'Settings saved (city not found)');
     } else {
@@ -740,18 +949,11 @@ function init() {
     reader.onload = () => {
       try {
         const parsed = JSON.parse(String(reader.result));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-        state = loadState();
-        applyAccent(state.settings.accent);
-        updateClock();
-        renderDailyFocus();
-        renderTasks();
-        renderLinks();
-        notesArea.value = state.notes;
-        updateNotesStats();
-        fetchWeather();
+        state = mergeState(parsed);
+        renderAll();
+        saveState({ immediate: true });
         settingsModal.close();
-        showToast('Backup restored!');
+        showToast('Backup restored & synced!');
       } catch {
         showToast('Invalid backup file');
       }
@@ -763,15 +965,8 @@ function init() {
   document.getElementById('resetDashboardBtn').addEventListener('click', () => {
     if (!confirm('Reset dashboard to default tasks, links, and settings?')) return;
     state = structuredClone(DEFAULT_STATE);
-    saveState();
-    applyAccent(state.settings.accent);
-    updateClock();
-    renderDailyFocus();
-    renderTasks();
-    renderLinks();
-    notesArea.value = '';
-    updateNotesStats();
-    fetchWeather();
+    renderAll();
+    saveState({ immediate: true });
     settingsModal.close();
     showToast('Dashboard reset to defaults');
   });
