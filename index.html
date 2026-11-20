@@ -445,12 +445,12 @@
 
       <div class="form-field">
         <label for="settingHaUrlInput">Home Assistant URL</label>
-        <input type="text" id="settingHaUrlInput" placeholder="https://your-instance.ui.nabu.casa" autocomplete="off" />
+        <input type="text" id="settingHaUrlInput" name="ha_instance_url" placeholder="https://your-instance.ui.nabu.casa" autocomplete="off" spellcheck="false" />
       </div>
 
       <div class="form-field">
         <label for="settingHaTokenInput">Long-Lived Access Token</label>
-        <input type="password" id="settingHaTokenInput" placeholder="Paste token from HA Profile → Security" autocomplete="off" />
+        <input type="text" id="settingHaTokenInput" name="ha_access_token" class="token-input" placeholder="eyJhbGciOi... (from HA Profile → Security)" autocomplete="off" spellcheck="false" />
         <p class="field-hint">Stored privately in your Firebase account — never committed to GitHub.</p>
       </div>
 

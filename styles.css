@@ -1492,6 +1492,16 @@ button {
   color: var(--accent);
 }
 
+.form-field input.token-input {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  -webkit-text-security: disc;
+}
+
+.form-field input.token-input:focus {
+  -webkit-text-security: none;
+}
+
 .form-field input[type="password"] {
   height: 40px;
   padding: 0 12px;

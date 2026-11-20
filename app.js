@@ -525,9 +525,15 @@ async function fetchHomeAssistant({ manual = false } = {}) {
       body: JSON.stringify({ template: HA_SUMMARY_TEMPLATE }),
     });
 
-    if (res.status === 401 || res.status === 403) {
-      setHaBadge('error', 'Invalid token');
-      if (manual) showToast('Home Assistant rejected the access token');
+    if (res.status === 401) {
+      setHaBadge('error', 'Invalid token (401)');
+      if (manual) showToast('Home Assistant rejected the token — check it starts with eyJ...');
+      return;
+    }
+
+    if (res.status === 403) {
+      setHaBadge('error', 'Forbidden (403)');
+      if (manual) showToast('Home Assistant returned 403 Forbidden (check admin permissions / CORS)');
       return;
     }
 
